@@ -1,0 +1,15 @@
+# OS files
+Thumbs.db
+.DS_Store
+*.bak
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+package-lock.json
+
+# Plugin runtime artifacts (user data, not source)
+plugin-data/

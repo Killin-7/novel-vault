@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Novel Vault</title>
+<style>
+/* ───────────────────────────────
+   Novel Vault — Native Hanako UI
+   ─────────────────────────────── */
+
+/* ── Foundation (mirrors Hanako design tokens) ── */
+:root {
+  /* Fallbacks when iframe doesn't receive host vars */
+  --nv-bg:            var(--bg, #F8F5ED);
+  --nv-bg-card:       var(--bg-card, #FCFAF5);
+  --nv-bg-glass:      var(--bg-glass, rgba(250, 248, 242, 0.92));
+  --nv-accent:        var(--accent, #537D96);
+  --nv-accent-hover:  var(--accent-hover, #456A80);
+  --nv-accent-light:  var(--accent-light, rgba(83, 125, 150, 0.08));
+  --nv-text:          var(--text, #3B3D3F);
+  --nv-text-light:    var(--text-light, #6B6F73);
+  --nv-text-muted:    var(--text-muted, #8E9196);
+  --nv-border:        var(--border, rgba(83, 125, 150, 0.16));
+  --nv-shadow:        var(--shadow, rgba(59, 61, 63, 0.06));
+  --nv-danger:        var(--danger, #8B3A3A);
+  --nv-green:         var(--green, #7BAE7F);
+  --nv-coral:         var(--coral, #EC8F8D);
+  --nv-overlay-subtle: var(--overlay-subtle, rgba(0, 0, 0, 0.03));
+  --nv-overlay-light:  var(--overlay-light, rgba(0, 0, 0, 0.05));
+  --nv-overlay-medium: var(--overlay-medium, rgba(0, 0, 0, 0.08));
+  --nv-overlay-strong: var(--overlay-strong, rgba(0, 0, 0, 0.15));
+  --nv-radius:        10px;
+  --nv-radius-sm:     6px;
+  --nv-font:          var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif);
+}
+
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--nv-font);
+  font-size:13px;line-height:1.55;
+  background:var(--nv-bg);
+  color:var(--nv-text);
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* ── Top Navigation Bar (native Hanako pattern) ── */
+.nav{
+  display:flex;align-items:center;gap:4px;
+  padding:8px 16px;
+  background:var(--nv-bg-glass);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--nv-border);
+  flex-shrink:0;z-index:10;
+  position:sticky;top:0;
+}
+.nav-brand{
+  font-size:14px;font-weight:700;color:var(--nv-accent);
+  margin-right:12px;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+  user-select:none;
+}
+.nav-brand svg{width:20px;height:20px;flex-shrink:0}
+.nav-link{
+  color:var(--nv-text-light);text-decoration:none;font-size:12px;font-weight:500;
+  padding:4px 10px;border-radius:var(--nv-radius-sm);
+  cursor:pointer;transition:all .15s ease;white-space:nowrap;
+  user-select:none;position:relative;
+}
+.nav-link:hover{background:var(--nv-overlay-light);color:var(--nv-text)}
+.nav-link.active{color:var(--nv-accent);background:var(--nv-accent-light);font-weight:600}
+.nav-link.active::after{
+  content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
+  width:20px;height:2px;background:var(--nv-accent);border-radius:1px;
+}
+.nav-spacer{flex:1}
+.nav-badge{
+  font-size:11px;color:var(--nv-text-muted);
+  padding:3px 10px;border-radius:99px;
+  background:var(--nv-overlay-subtle);
+  display:none;align-items:center;gap:4px;
+  white-space:nowrap;user-select:none;
+}
+
+/* ── App Layout ── */
+.app{display:flex;flex:1;overflow:hidden;min-height:0}
+.main{flex:1;overflow-y:auto;padding:20px 24px 40px;min-width:0;scroll-behavior:smooth}
+#view{max-width:780px;margin:0 auto}
+
+/* ── Sidebar (native pattern — compact, muted) ── */
+.sidebar{
+  width:210px;flex-shrink:0;
+  background:var(--nv-sidebar-bg, var(--nv-overlay-subtle));
+  border-right:1px solid var(--nv-border);
+  overflow-y:auto;display:none;flex-direction:column;
+  scrollbar-width:thin;
+}
+.sidebar.show{display:flex}
+.sidebar h3{
+  padding:14px 14px 6px;font-size:10px;font-weight:600;
+  color:var(--nv-text-muted);text-transform:uppercase;letter-spacing:.06em;
+  user-select:none;
+}
+.sidebar ul{list-style:none;padding:2px 0 8px}
+.sidebar li{
+  padding:6px 14px;cursor:pointer;font-size:12px;color:var(--nv-text-light);
+  border-left:2px solid transparent;transition:all .12s ease;
+  user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.5;
+}
+.sidebar li:hover{background:var(--nv-overlay-light);color:var(--nv-text)}
+.sidebar li.active{
+  background:var(--nv-accent-light);color:var(--nv-accent);
+  border-left-color:var(--nv-accent);font-weight:600;
+}
+
+/* ── Page Header ── */
+.page-header{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:20px;flex-wrap:wrap;gap:10px;
+}
+.page-header h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.page-header-sub{font-size:12px;color:var(--nv-text-muted);margin-top:2px}
+
+/* ── Cards (native Hanako style) ── */
+.card{
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius);padding:14px 16px;
+  margin-bottom:8px;cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;
+  transition:all .15s ease;
+}
+.card:hover{
+  border-color:var(--nv-accent);
+  background:var(--nv-overlay-light);
+  box-shadow:0 1px 3px var(--nv-shadow);
+}
+.card:active{transform:scale(.995)}
+.card-title{font-size:14px;font-weight:600;margin-bottom:3px;color:var(--nv-text)}
+.card-sub{
+  font-size:11px;color:var(--nv-text-light);
+  display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+}
+
+/* ── Compact Card (for nested lists) ── */
+.compact-card{
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius-sm);padding:8px 12px;margin-bottom:6px;
+  cursor:pointer;transition:all .12s ease;
+  font-size:12px;line-height:1.5;
+}
+.compact-card:hover{border-color:var(--nv-accent);background:var(--nv-overlay-light)}
+
+/* ── Button System ── */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 14px;border:1px solid transparent;border-radius:var(--nv-radius-sm);
+  font-family:var(--nv-font);font-size:12px;font-weight:500;
+  cursor:pointer;transition:all .12s ease;
+  line-height:1.4;user-select:none;
+  white-space:nowrap;
+}
+.btn:focus-visible{outline:2px solid var(--nv-accent);outline-offset:2px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--nv-accent);color:#fff;font-weight:600}
+.btn-primary:hover:not(:disabled){background:var(--nv-accent-hover);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.btn-danger{background:var(--nv-danger);color:#fff}
+.btn-danger:hover:not(:disabled){opacity:.9}
+.btn-ghost{
+  background:transparent;color:var(--nv-text-light);border-color:var(--nv-border);
+}
+.btn-ghost:hover:not(:disabled){
+  background:var(--nv-overlay-light);color:var(--nv-text);border-color:var(--nv-accent);
+}
+.btn-sm{padding:3px 8px;font-size:11px;border-radius:4px}
+.btn-icon{padding:4px 6px;min-width:28px;justify-content:center}
+.btn-group{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ── Form ── */
+.form-group{margin-bottom:12px}
+.form-group label{
+  display:block;font-size:11px;font-weight:600;color:var(--nv-text-muted);
+  margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em;
+}
+.form-group input,.form-group textarea,.form-group select{
+  width:100%;padding:7px 10px;
+  border-radius:var(--nv-radius-sm);
+  border:1px solid var(--nv-border);
+  background:var(--nv-bg);color:var(--nv-text);
+  font-family:var(--nv-font);font-size:13px;
+  outline:none;transition:border-color .15s,box-shadow .15s;
+}
+.form-group input:focus,.form-group textarea:focus{
+  border-color:var(--nv-accent);
+  box-shadow:0 0 0 3px var(--nv-accent-light);
+}
+.form-group textarea{resize:vertical;min-height:60px}
+
+/* ── Section & Content Box ── */
+.section{margin-bottom:20px}
+.section h3{
+  font-size:11px;font-weight:600;color:var(--nv-text-muted);
+  margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;
+  display:flex;align-items:center;gap:6px;
+}
+.box{
+  background:var(--nv-overlay-subtle);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius-sm);padding:12px 14px;
+  font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word;
+  color:var(--nv-text);
+}
+
+/* ── Status Badges ── */
+.badge{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:10px;font-weight:600;
+  padding:2px 7px;border-radius:99px;
+  background:var(--nv-accent-light);color:var(--nv-accent);
+}
+.badge-muted{background:var(--nv-overlay-medium);color:var(--nv-text-muted)}
+.badge-warn{background:rgba(245,158,11,.12);color:#b45309}
+.badge-success{background:rgba(34,197,94,.12);color:#15803d}
+.badge-danger{background:rgba(239,68,68,.12);color:#b91c1c}
+.badge-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+
+/* ── Stat Row ── */
+.stat-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.stat-item{display:flex;flex-direction:column;gap:2px}
+.stat-value{font-size:18px;font-weight:700;color:var(--nv-accent)}
+.stat-label{font-size:11px;color:var(--nv-text-muted);font-weight:500}
+
+/* ── Plot Board Columns ── */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:680px){.cols{grid-template-columns:1fr}}
+.col-header{
+  display:flex;align-items:center;gap:8px;margin-bottom:10px;
+  padding-bottom:10px;border-bottom:2px solid var(--nv-border);
+}
+.col-header h3{font-size:13px;font-weight:600;margin:0;text-transform:none;letter-spacing:0}
+.col-header .count{
+  font-size:11px;font-weight:500;color:var(--nv-text-muted);
+  background:var(--nv-overlay-medium);padding:1px 8px;border-radius:99px;
+}
+.plot-card{
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius-sm);padding:10px 12px;margin-bottom:6px;
+  transition:border-color .12s;
+}
+.plot-card:hover{border-color:var(--nv-accent)}
+.plot-title{font-size:13px;font-weight:600;margin-bottom:3px}
+.plot-desc{font-size:12px;color:var(--nv-text-light);margin-bottom:5px;line-height:1.5}
+.plot-meta{font-size:10px;color:var(--nv-text-muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.plot-meta .stars{color:#e5a100;letter-spacing:.5px}
+.plot-meta .ch-ref{
+  background:var(--nv-overlay-medium);color:var(--nv-text-light);
+  padding:1px 6px;border-radius:4px;font-size:10px;
+}
+
+/* ── Character Card ── */
+.char-card{
+  display:flex;gap:14px;align-items:flex-start;margin-bottom:20px;
+  padding:16px;background:var(--nv-bg-card);
+  border-radius:var(--nv-radius);border:1px solid var(--nv-border);
+}
+.char-avatar{
+  width:44px;height:44px;border-radius:50%;
+  background:var(--nv-accent);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:700;color:#fff;flex-shrink:0;
+  box-shadow:0 2px 6px rgba(0,0,0,.08);
+}
+.char-name{font-size:15px;font-weight:600;margin-bottom:2px}
+.char-role{font-size:11px;color:var(--nv-accent);font-weight:500;margin-bottom:3px}
+.char-bio{font-size:12px;color:var(--nv-text-light);line-height:1.6}
+
+/* ── Timeline ── */
+.timeline{position:relative;padding-left:24px}
+.timeline::before{
+  content:'';position:absolute;left:7px;top:4px;bottom:4px;
+  width:1.5px;background:var(--nv-border);
+}
+.timeline-item{position:relative;padding-bottom:14px}
+.timeline-item::before{
+  content:'';position:absolute;left:-19px;top:6px;
+  width:9px;height:9px;border-radius:50%;
+  background:var(--nv-accent);border:2px solid var(--nv-bg);
+}
+.timeline-item:last-child::before{background:var(--nv-text-muted)}
+.timeline-peer::before{background:var(--nv-green)!important}
+.timeline-item .ch-label{
+  font-size:10px;color:var(--nv-accent);font-weight:600;margin-bottom:3px;
+}
+.timeline-item .st-box{
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius-sm);padding:10px 12px;
+  font-size:12px;line-height:1.6;
+}
+
+/* ── Details/Accordion ── */
+details.section{margin-bottom:16px}
+details.section summary{
+  cursor:pointer;font-size:13px;font-weight:600;
+  color:var(--nv-accent);padding:6px 0;
+  user-select:none;transition:color .12s;
+  list-style:none;
+}
+details.section summary::-webkit-details-marker{display:none}
+details.section summary:hover{color:var(--nv-accent-hover)}
+details.section[open] summary{margin-bottom:8px}
+
+/* ── Hook Banner ── */
+.hook-banner{
+  background:var(--nv-accent-light);
+  border-left:3px solid var(--nv-accent);
+  border-radius:var(--nv-radius-sm);
+  padding:10px 14px;margin-bottom:10px;
+}
+.hook-banner .hook-label{font-size:10px;color:var(--nv-text-muted);margin-bottom:3px;font-weight:600;text-transform:uppercase}
+.hook-banner .hook-text{font-size:13px;color:var(--nv-text);line-height:1.6;white-space:pre-wrap}
+
+/* ── Foreshadow List ── */
+.fs-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:4px 8px;background:var(--nv-overlay-subtle);
+  border-radius:4px;margin-bottom:3px;font-size:12px;
+}
+.fs-row .fs-id{font-weight:600;color:var(--nv-accent);min-width:32px}
+.fs-row .fs-content{flex:1;color:var(--nv-text);padding:0 6px}
+.fs-row .fs-chapter{font-size:10px;color:var(--nv-text-muted);white-space:nowrap}
+
+/* ── Modal ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.35);backdrop-filter:blur(2px);
+  z-index:100;justify-content:center;align-items:center;
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  border-radius:var(--nv-radius);padding:24px;width:420px;max-width:92vw;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:16px}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--nv-bg-card);border:1px solid var(--nv-border);
+  color:var(--nv-text);padding:8px 20px;border-radius:var(--nv-radius-sm);
+  font-size:12px;z-index:200;opacity:0;
+  transition:opacity .2s,transform .2s;pointer-events:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);
+  transform:translateX(-50%) translateY(8px);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Empty / Loading / Error ── */
+.empty,.error,.loading{
+  text-align:center;padding:56px 20px;color:var(--nv-text-muted);
+  font-size:13px;line-height:1.6;
+}
+.empty-icon{font-size:32px;margin-bottom:10px;opacity:.6}
+.empty h4{font-size:14px;font-weight:600;color:var(--nv-text);margin-bottom:4px}
+.error{color:var(--nv-danger)}
+
+/* ── Utility ── */
+.inline-form{display:inline}
+.sep{width:100%;height:1px;background:var(--nv-border);margin:16px 0}
+.text-muted{color:var(--nv-text-muted)}
+.text-accent{color:var(--nv-accent)}
+.flex-between{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mt-2{margin-top:8px}.mt-4{margin-top:16px}.mb-2{margin-bottom:8px}
+.gap-8{gap:8px}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--nv-overlay-strong);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--nv-text-muted)}
+
+/* ── Animations ── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .2s ease}
+
+/* ── Mobile ── */
+@media(max-width:640px){
+  .nav{padding:6px 10px;gap:2px}
+  .nav-brand{font-size:13px}
+  .nav-link{font-size:11px;padding:3px 7px}
+  .sidebar{width:160px}
+  .main{padding:14px 12px 32px}
+  .page-header h2{font-size:16px}
+  .card{padding:10px 12px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" id="top-nav">
+  <span class="nav-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+    Novel Vault
+  </span>
+  <span class="nav-link active" data-page="novel-list">📚</span>
+  <span class="nav-link" data-page="plot-board">🎯</span>
+  <span class="nav-link" data-page="character-timeline">👤</span>
+  <span class="nav-spacer"></span>
+  <span class="nav-badge" id="novel-badge"></span>
+</nav>
+
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <h3 id="sidebar-title">章节</h3>
+    <ul id="sidebar-list"></ul>
+  </div>
+  <div class="main">
+    <div id="view"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>window.__DATA__ = /*__DATA__*/;</script>
+<script>
+/* ── 同步父窗口主题 ── */
+(function() {
+  function syncTheme() {
+    try {
+      const pdoc = window.parent.document.documentElement;
+      const pstyle = window.parent.getComputedStyle(pdoc);
+      const vars = ['--bg','--bg-card','--bg-glass','--text','--text-light','--text-muted',
+        '--accent','--accent-hover','--accent-light','--border','--shadow',
+        '--danger','--green','--coral',
+        '--overlay-subtle','--overlay-light','--overlay-medium','--overlay-strong',
+        '--sidebar-bg'];
+      const root = document.documentElement;
+      let synced = 0;
+      vars.forEach(v => {
+        const val = pstyle.getPropertyValue(v).trim();
+        if (val) { root.style.setProperty(v, val); synced++; }
+      });
+      if (synced > 0) {
+        console.log('[novel-vault] theme synced: ' + synced + ' vars, theme=' + (pdoc.dataset.theme || 'default'));
+      }
+    } catch(e) {
+      /* cross-origin safety */
+    }
+  }
+  syncTheme();
+  // 监听父窗口主题切换
+  try {
+    let lastTheme = window.parent.document.documentElement.dataset.theme || '';
+    setInterval(() => {
+      try {
+        const cur = window.parent.document.documentElement.dataset.theme || '';
+        if (cur !== lastTheme) { lastTheme = cur; syncTheme(); }
+      } catch(e) {}
+    }, 2000);
+  } catch(e) {}
+})();
+</script>
+<script>
+window.parent.postMessage({type:'ready'},'*');
+
+const D = window.__DATA__ || {};
+
+function currentNovel() {
+  return (D.novels || []).find(n => n.slug === state.novelSlug) || null;
+}
+function cn(field) {
+  const n = currentNovel();
+  return n ? n[field] : null;
+}
+
+let state = { page: 'novel-list', novelSlug: '', chapterNum: null, characterName: '' };
+
+/* ── Router ── */
+function nav(page, params = {}) {
+  state = { ...state, page, ...params };
+  if (params.novelSlug !== undefined) state.novelSlug = params.novelSlug;
+  if (params.characterName !== undefined) state.characterName = params.characterName;
+  if (params.chapterNum !== undefined) state.chapterNum = params.chapterNum;
+  updateNav();
+  updateSidebar();
+  render();
+}
+
+function updateNav() {
+  document.querySelectorAll('.nav-link[data-page]').forEach(a => {
+    a.classList.toggle('active', a.dataset.page === state.page);
+  });
+  const badge = document.getElementById('novel-badge');
+  if (state.novelSlug) {
+    const n = (D.novels||[]).find(n => n.slug === state.novelSlug);
+    badge.innerHTML = n ? '<span class="badge-dot" style="background:var(--nv-accent)"></span>' + esc(n.title) : '';
+    badge.style.display = n ? 'flex' : 'none';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function updateSidebar() {
+  const sb = document.getElementById('sidebar');
+  const st = document.getElementById('sidebar-title');
+  const sl = document.getElementById('sidebar-list');
+  sl.innerHTML = '';
+
+  if (state.page === 'chapter-view' && state.novelSlug && cn('chapters')) {
+    sb.classList.add('show');
+    st.textContent = '章节导航';
+    cn('chapters').forEach(ch => {
+      const li = document.createElement('li');
+      const dot = { '已归档':'🟢','已发布':'🔵','草稿':'🟡','待写':'⚪' }[ch.status] || '⚪';
+      li.innerHTML = `<span style="margin-right:4px">${dot}</span> 第${ch.chapter_number}章`;
+      if (ch.chapter_number === state.chapterNum) li.classList.add('active');
+      li.onclick = () => nav('chapter-view', { chapterNum: ch.chapter_number });
+      sl.appendChild(li);
+    });
+  } else if (state.page === 'character-timeline' && state.novelSlug && cn('characters')) {
+    sb.classList.add('show');
+    st.textContent = '角色列表';
+    cn('characters').forEach(c => {
+      const li = document.createElement('li');
+      li.textContent = c.name;
+      if (c.name === state.characterName) li.classList.add('active');
+      li.onclick = () => nav('character-timeline', { characterName: c.name });
+      sl.appendChild(li);
+    });
+  } else {
+    sb.classList.remove('show');
+  }
+}
+
+/* ── Render Dispatch ── */
+function render() {
+  const v = document.getElementById('view');
+  v.className = 'fade-in';
+  switch (state.page) {
+    case 'novel-list': renderNovelList(v); break;
+    case 'chapter-view': renderChapterView(v); break;
+    case 'plot-board': renderPlotBoard(v); break;
+    case 'character-timeline': renderCharacterTimeline(v); break;
+  }
+}
+
+/* ── Novel List ── */
+function renderNovelList(v) {
+  const novels = D.novels || [];
+  if (novels.length === 0) {
+    v.innerHTML = '<div class="empty"><div class="empty-icon">📚</div><h4>还没有小说</h4><p>在数据源中添加项目后即可在此查看</p></div>';
+    return;
+  }
+  v.innerHTML = `<div class="page-header"><div><h2>小说仓库</h2><div class="page-header-sub">${novels.length} 部作品</div></div></div>`;
+  novels.forEach(n => {
+    const unresolvedBadge = n.unresolved_count > 0
+      ? `<span class="badge badge-warn">🔍 ${n.unresolved_count}</span>`
+      : '';
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.onclick = () => nav('chapter-view', { novelSlug: n.slug });
+    card.innerHTML = `<div><div class="card-title">${esc(n.title)}</div>
+      <div class="card-sub">
+        <span>📄 ${n.chapter_count||0} 章</span>
+        ${n.total_planned ? `<span>📋 ${n.total_planned} 章</span>` : ''}
+        <span>已归档 ${n.archived_count||0}</span>
+        ${unresolvedBadge}
+      </div></div>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--nv-text-muted)" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg>`;
+    v.appendChild(card);
+  });
+}
+
+/* ── Chapter View ── */
+function renderWriteContext(ch) {
+  const prevChapters = ch.prev_chapters || [];
+  if (!prevChapters.length && !ch.ending_hook) return '';
+  let html = '<details class="section" open><summary>✍️ 写前必读</summary>';
+  // Previous chapter summaries
+  if (prevChapters.length) {
+    html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">';
+    prevChapters.forEach(p => {
+      html += `<div class="compact-card" onclick="nav('chapter-view',{chapterNum:${p.chapter_number}})" style="cursor:pointer"><div style="font-size:11px;color:var(--nv-accent);font-weight:600;margin-bottom:2px">← 第${p.chapter_number}章</div><div style="font-size:12px;color:var(--nv-text-light)">${esc((p.summary||'').slice(0,140))}${(p.summary||'').length>140?'...':''}</div></div>`;
+    });
+    html += '</div>';
+  }
+  // Hook
+  if (ch.ending_hook) {
+    html += `<div class="hook-banner"><div class="hook-label">📎 章末钩子</div><div class="hook-text">${esc(ch.ending_hook)}</div></div>`;
+  }
+  // Active foreshadows (filtered by chapter)
+  const pts = cn('plotPoints') || [];
+  const activePts = pts.filter(p => p.status === 'active' && (p.planted_chapter_num || 0) <= ch.chapter_number);
+  if (activePts.length) {
+    html += '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;font-weight:600;color:var(--nv-text-light)">🎯 活跃伏笔（' + activePts.length + '条）</summary><div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">';
+    activePts.forEach(p => {
+      html += `<div class="fs-row"><span class="fs-id">${esc(p.id)}</span><span class="fs-content">${esc((p.description||'').slice(0,80))}</span><span class="fs-chapter">第${p.planted_chapter_num||'?'}章</span></div>`;
+    });
+    html += '</div></details>';
+  }
+  html += '</details>';
+  return html;
+}
+
+function renderOutlineBox(ch) {
+  const ol = ch.outline;
+  if (!ol) return '';
+  let html = '<details class="section"><summary>📋 大纲对照</summary>';
+  html += `<div style="font-size:11px;color:var(--nv-text-muted);margin-bottom:6px">${esc(ol.name||'')} · ${esc(ol.volume||'')}</div>`;
+  const fields = [
+    { key: 'positioning', label: '🎯 定位', val: ol.positioning },
+    { key: 'scenes', label: '🏪 场景', val: ol.scenes },
+    { key: 'events', label: '⚡ 事件', val: ol.events },
+    { key: 'emotion', label: '💭 情绪推进', val: ol.emotion },
+    { key: 'relation', label: '🔗 关系推进', val: ol.relation },
+    { key: 'hook', label: '🪝 尾钩', val: ol.hook },
+  ];
+  fields.forEach(f => {
+    if (f.val) html += `<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:600;color:var(--nv-text-light);margin-bottom:2px">${f.label}</div><div class="box" style="padding:8px 10px;font-size:12px">${esc(f.val)}</div></div>`;
+  });
+  html += '</details>';
+  return html;
+}
+
+function renderChapterView(v) {
+  if (!state.novelSlug || !cn('chapters')) { v.innerHTML = renderNovelSelector('chapter-view'); return; }
+  const ch = cn('chapters').find(c => c.chapter_number === state.chapterNum) || cn('chapters')[cn('chapters').length-1] || null;
+  if (!ch) { v.innerHTML = '<div class="empty"><div class="empty-icon">📖</div><h4>暂无章节</h4></div>'; return; }
+  state.chapterNum = ch.chapter_number;
+  const prev = cn('chapters').find(c => c.chapter_number === ch.chapter_number - 1);
+  const next = cn('chapters').find(c => c.chapter_number === ch.chapter_number + 1);
+  
+  const statusBadges = { '已归档':'badge-success','已发布':'badge','草稿':'badge-warn','待写':'badge-muted' };
+  const statusCls = statusBadges[ch.status] || 'badge-muted';
+  
+  v.innerHTML = `<div class="page-header"><div><h2>第${ch.chapter_number}章${ch.title ? ' · ' + esc(ch.title) : ''}</h2>
+    <div class="page-header-sub" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px">
+    <span class="badge ${statusCls}">${esc(ch.status||'未知')}</span>
+    ${ch.notes ? `<span class="text-muted">${esc(ch.notes)}</span>` : ''}
+    </div></div></div>
+    ${renderWriteContext(ch)}
+    ${renderOutlineBox(ch)}
+    ${ch.what ? `<div class="section"><h3>📋 发生了什么</h3><div class="box">${esc(ch.what)}</div></div>` : ''}
+    ${ch.emotion ? `<div class="section"><h3>💭 情绪变化</h3><div class="box">${esc(ch.emotion)}</div></div>` : ''}
+    ${ch.relation ? `<div class="section"><h3>🔗 关系变化</h3><div class="box">${esc(ch.relation)}</div></div>` : ''}
+    ${ch.foreshadow ? `<div class="section"><h3>🎯 伏笔推进 / 回收</h3><div class="box">${esc(ch.foreshadow)}</div></div>` : ''}
+    ${ch.setting ? `<div class="section"><h3>⚙️ 设定新增 / 确认</h3><div class="box">${esc(ch.setting)}</div></div>` : ''}
+    <div style="display:flex;justify-content:space-between;gap:10px;margin-top:20px">
+    <button class="btn btn-ghost btn-sm" ${prev?'onclick="nav(\'chapter-view\',{chapterNum:'+prev.chapter_number+'})"':'disabled'}>← 上一章</button>
+    <button class="btn btn-ghost btn-sm" ${next?'onclick="nav(\'chapter-view\',{chapterNum:'+next.chapter_number+'})"':'disabled'}>下一章 →</button></div>`;
+}
+
+/* ── Plot Board ── */
+function renderPlotBoard(v) {
+  if (!state.novelSlug) { v.innerHTML = renderNovelSelector('plot-board'); return; }
+  const pts = cn('plotPoints') || [];
+  const active = pts.filter(p => p.status === 'active');
+  const resolved = pts.filter(p => p.status === 'resolved');
+  v.innerHTML = `<div class="page-header"><div><h2>伏笔看板</h2><div class="page-header-sub">${currentNovel()?esc(currentNovel().title):''}</div></div></div>
+    <div class="cols">
+    <div><div class="col-header"><h3>🔴 未回收</h3><span class="count">${active.length}</span></div>
+    ${active.length?active.map(p=>renderPlotCard(p)).join(''):'<div class="empty" style="padding:24px;font-size:12px">暂无活跃伏笔</div>'}</div>
+    <div><div class="col-header"><h3>🟢 已回收</h3><span class="count">${resolved.length}</span></div>
+    ${resolved.length?resolved.map(p=>renderPlotCard(p)).join(''):'<div class="empty" style="padding:24px;font-size:12px">暂无已回收伏笔</div>'}</div></div>`;
+}
+
+function renderPlotCard(p) {
+  const stars = '★'.repeat(Math.min(Math.max(p.importance||0,1),5)) + '☆'.repeat(5-Math.min(Math.max(p.importance||0,1),5));
+  const isResolved = p.status === 'resolved';
+  const statusBadge = isResolved ? '<span class="badge badge-success" style="float:right">已回收</span>' : '';
+  return `<div class="plot-card"><div class="plot-title">${esc(p.id || '?')} ${esc((p.title||'').slice(0,60))}${statusBadge}</div>
+    ${p.description?`<div class="plot-desc">${esc(p.description.slice(0,120))}${p.description.length>120?'...':''}</div>`:''}
+    <div class="plot-meta"><span class="stars">${stars}</span>
+    ${p.planted_chapter_num?`<span class="ch-ref">第${p.planted_chapter_num}章</span>`:''}
+    ${isResolved&&p.resolved_chapter_num?`<span class="ch-ref">✅ 第${p.resolved_chapter_num}章</span>`:''}
+    </div></div>`;
+}
+
+/* ── Character Timeline ── */
+function renderCharacterTimeline(v) {
+  if (!state.novelSlug || !cn('characters')) { v.innerHTML = renderNovelSelector('character-timeline'); return; }
+  const ch = state.characterName ? cn('characters').find(c => c.name === state.characterName) : null;
+  if (!ch) { v.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><h4>选择角色</h4><p>从侧边栏选择一个角色查看时间线</p></div>'; return; }
+  const arc = ch.arc || [];
+  
+  v.innerHTML = `<div class="char-card"><div class="char-avatar">${esc(ch.name.charAt(0))}</div>
+    <div><div class="char-name">${esc(ch.name)}</div>
+    ${ch.role?`<div class="char-role">${esc(ch.role)}</div>`:''}
+    ${ch.description?`<div class="char-bio">${esc(ch.description).slice(0,200)}</div>`:''}
+    <div class="stat-row" style="margin-top:8px">
+    ${ch.speaking_style?`<div class="stat-item"><span class="stat-label">语言风格</span><span class="stat-value" style="font-size:12px;color:var(--nv-text)">${esc(ch.speaking_style)}</span></div>`:''}
+    ${ch.emotional_triggers?`<div class="stat-item"><span class="stat-label">情绪触发</span><span class="stat-value" style="font-size:12px;color:var(--nv-text)">${esc(ch.emotional_triggers)}</span></div>`:''}
+    </div></div></div>
+    <div class="section"><h3>⏱ 状态时间线</h3>
+    ${arc.length?`<div class="timeline">${arc.map((t,i)=>{
+      const isLast = i===arc.length-1;
+      const itemClass=isLast?'timeline-item':'timeline-item';
+      return`<div class="${itemClass}"><div class="ch-label">第 ${t.chapter_number||'?'} 章${t.chapter_title?' · '+esc(t.chapter_title):''}</div>
+    <div class="st-box">${t.state_summary||t.emotional_state?`<div style="color:var(--nv-text);font-weight:500">${esc(t.state_summary||t.emotional_state)}</div>`:''}
+    ${t.emotional_state&&t.state_summary!==t.emotional_state?`<div style="color:var(--nv-text-light);font-size:11px;margin-top:3px">${esc(t.emotional_state)}</div>`:''}</div></div>`;
+    }).join('')}</div>`:'<div class="empty" style="padding:20px;font-size:12px">暂无状态记录</div>'}</div>`;
+}
+
+/* ── Novel Selector ── */
+function renderNovelSelector(target) {
+  const novels = D.novels || [];
+  if (novels.length === 0) return `<div class="empty"><div class="empty-icon">📚</div><h4>没有小说</h4><p>请先添加数据源</p></div>`;
+  return `<div class="page-header"><h2>选择小说</h2></div>
+    ${novels.map(n => `<div class="card" onclick="nav('${target}',{novelSlug:'${esc(n.slug)}'})"><div><div class="card-title">${esc(n.title)}</div><div class="card-sub">${n.chapter_count||0} 章</div></div><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--nv-text-muted)" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg></div>`).join('')}`;
+}
+
+/* ── Helpers ── */
+function toast(m) {
+  const e = document.getElementById('toast');
+  e.textContent = m; e.classList.add('show');
+  setTimeout(() => e.classList.remove('show'), 2500);
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ── Init ── */
+document.querySelectorAll('.nav-link[data-page]').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); nav(a.dataset.page, { novelSlug: state.novelSlug }); });
+});
+nav('novel-list');
+</script>
+</body>
+</html>

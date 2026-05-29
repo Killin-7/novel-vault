@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "novel-vault",
+  "name": "小说仓库",
+  "version": "1.0.0",
+  "description": "跨小说的结构化知识库——角色、伏笔、事件、设定，人和 AI 共享同一个信息底座。",
+  "minAppVersion": "0.82.0",
+  "trust": "full-access",
+  "activationEvents": ["onStartup"],
+  "ui": {
+    "hostCapabilities": ["external.open"]
+  },
+  "contributes": {
+    "page": {
+      "title": { "zh": "小说仓库", "en": "Novel Vault" },
+      "icon": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><path d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20'/><path d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'/></svg>",
+      "route": "/novel-list"
+    },
+    "tools": true,
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "novelBasePath": {
+          "type": "string",
+          "default": "",
+          "description": "小说项目根目录的路径。插件会扫描此目录下的子文件夹，将同时包含「章节规划.md」和「正文/」目录的识别为小说项目。"
+        }
+      },
+      "required": ["novelBasePath"]
+    }
+  }
+}
