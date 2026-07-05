@@ -9,7 +9,7 @@
 - **系统**：Windows
 - **Hanako 版本**：0.82.0+
 - **插件类型**：full-access（页面 + 路由 + Agent 工具）
-- **数据方案**：直接解析用户 Markdown 文件（零存储开销）
+- **数据方案**：以用户 Markdown 文件为主数据源，插件私有 JSON 文件保存 AtomicFact、写作规则和解析缓存
 - **UI 方案**：单 HTML SPA + OpenHanako 原生设计 token
 
 ---
@@ -191,10 +191,15 @@ novel-vault/
 │   └── api.js                 # Markdown 解析引擎 + 数据注入
 ├── frontend/
 │   └── index-spa.html         # 单页应用（4 视图）
+├── lib/
+│   └── store.js               # 插件私有持久化层（AtomicFact / 写作规则 / 缓存）
 ├── tools/
 │   ├── archive-chapter.js     # 归档（直接写文件 + .bak）
 │   ├── query-novel-state.js   # 查询（full/brief 双模式）
-│   └── emotion-rhythm.js      # 情感节奏检测
+│   ├── emotion-rhythm.js      # 情感节奏检测
+│   ├── search-facts.js        # 细粒度事实检索
+│   ├── refine-skill.js        # 写作规则存入
+│   └── query-skills.js        # 写作规则查询
 ├── docs/
 │   ├── NOVEL-PROJECT-SPEC.md       # 小说项目格式规范
 │   └── PLUGIN-DEV-EXPERIENCE.md    # 开发踩坑记录

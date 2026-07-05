@@ -14,6 +14,38 @@
 
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
+
+// 尝试导入 store 缓存函数，失败则降级为无缓存
+let _getCache = null, _setCache = null;
+let _querySkills = null, _getForeshadowRelations = null;
+try {
+  const store = await import("../lib/store.js");
+  _getCache = store.getCache;
+  _setCache = store.setCache;
+  _querySkills = store.querySkillsByCharacter;
+  _getForeshadowRelations = store.getForeshadowRelations;
+} catch(e) {
+  // store 未初始化时降级为无缓存模式
+}
+
+function fileHash(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return crypto.createHash("md5").update(filePath + stat.mtimeMs + stat.size).digest("hex").slice(0, 12);
+  } catch(e) { return null; }
+}
+
+function cachedParse(filePath, parseFn) {
+  if (!_getCache || !_setCache) return parseFn(filePath);
+  const h = fileHash(filePath);
+  if (!h) return parseFn(filePath);
+  const cached = _getCache(filePath);
+  if (cached && cached._hash === h) return cached._data;
+  const data = parseFn(filePath);
+  try { _setCache(filePath, { _hash: h, _data: data }); } catch(e) {}
+  return data;
+}
 
 function slugify(s) { return s.replace(/[^\w\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "novel"; }
 
@@ -328,15 +360,72 @@ function buildL2Index(projectPath) {
 }
 
 // ═════════════════════════════════════════
+// 信息边界解析（bounds:xxx-known 锚标记）
+// ═════════════════════════════════════════
+
+function parseInfoBoundaries(projectPath) {
+  const fp = path.join(projectPath, "主角设定集.md");
+  if (!fs.existsSync(fp)) return {};
+  const lines = fs.readFileSync(fp, "utf-8").split("\n");
+
+  // 查找所有 bounds:xxx-known 标记
+  const markers = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s.*<!--\s*bounds:(\w+)-known\s*-->/);
+    if (m) markers.push({ prefix: m[2], line: i, headingLevel: m[1].length });
+  }
+  if (markers.length === 0) return {};
+
+  const result = {};
+  for (let mi = 0; mi < markers.length; mi++) {
+    const { prefix, line, headingLevel } = markers[mi];
+    const nextLine = mi + 1 < markers.length ? markers[mi + 1].line : lines.length;
+    let endLine = nextLine;
+    for (let j = line + 1; j < nextLine; j++) {
+      const t = lines[j].trim();
+      const hm = t.match(/^(#{1,6})\s/);
+      if (hm && hm[1].length <= headingLevel && !t.includes("<!--")) {
+        endLine = j;
+        break;
+      }
+    }
+    const content = lines.slice(line + 1, endLine).join("\n").trim();
+    if (!content) continue;
+
+    // 提取已知和未知列表
+    const known = [];
+    const unknown = [];
+    let inKnown = false, inUnknown = false;
+    for (const cl of content.split("\n")) {
+      const t = cl.trim();
+      if (t.includes("当前已知") || t.includes("**当前已知**")) { inKnown = true; inUnknown = false; continue; }
+      if (t.includes("当前未知") || t.includes("**当前未知**")) { inKnown = false; inUnknown = true; continue; }
+      if (inKnown && t.startsWith("-")) { const item = t.replace(/^-\s*/, "").trim(); if (item && item !== "--" && !/^-{2,}$/.test(item)) known.push(item); }
+      if (inUnknown && t.startsWith("-")) { const item = t.replace(/^-\s*/, "").trim(); if (item && item !== "--" && !/^-{2,}$/.test(item)) unknown.push(item); }
+    }
+    result[prefix] = { known, unknown };
+  }
+  return result;
+}
+
+// ═════════════════════════════════════════
 // L0/L1/L2 简报构建
 // ═════════════════════════════════════════
 
-function buildBrief(project, chapters, foreshadows, summaries) {
+async function buildBrief(project, chapters, foreshadows, summaries, characterName) {
   const archived = chapters.filter(c => c.status === "已归档").sort((a, b) => b.chapter_number - a.chapter_number);
   const latest = archived[0] || null;
   const lastChapterNum = latest ? latest.chapter_number : 0;
   const targetChapter = lastChapterNum + 1;
   const allDone = chapters.length > 0 && chapters.every(c => c.status === "已归档");
+
+  // 尝试获取 novel_id（供 A1/A2 用）
+  let novelId = null;
+  try {
+    const { getNovelBySlug } = await import("../lib/store.js");
+    const novel = getNovelBySlug(slugify(project.name));
+    if (novel) novelId = novel.id;
+  } catch(e) {}
 
   // ── 大纲文件 ──
   const outlinePath = findOutlineFile(project.path);
@@ -419,14 +508,25 @@ function buildBrief(project, chapters, foreshadows, summaries) {
   // active_foreshadows (按章号过滤)
   const active = foreshadows.filter(f => (f.status === "已埋下" || f.status === "推进中"));
   if (active.length > 0) {
-    L1.active_foreshadows = active.map(f => ({
-      id: f.id,
-      summary: f.content.slice(0, 80),
-      status: f.status,
-      type: f.type || "",
-      lifecycle: f.lifecycle || "",
-      reason: `伏笔与回收表.md 匹配，状态为 ${f.status}`,
-    }));
+    L1.active_foreshadows = active.map(f => {
+      const entry = {
+        id: f.id,
+        summary: f.content.slice(0, 80),
+        status: f.status,
+        type: f.type || "",
+        lifecycle: f.lifecycle || "",
+        reason: `伏笔与回收表.md 匹配，状态为 ${f.status}`,
+      };
+      // A2: 伏笔关系
+      if (novelId && _getForeshadowRelations && f.id) {
+        try {
+          const rels = _getForeshadowRelations(novelId, f.id);
+          const allRels = [...(rels.outgoing || []).map(r => ({ direction: "→", target: r.target_id, type: r.type })), ...(rels.incoming || []).map(r => ({ direction: "←", source: r.source_id, type: r.type }))];
+          if (allRels.length > 0) entry.relations = allRels;
+        } catch(e) {}
+      }
+      return entry;
+    });
   }
 
   // character_states（从剧情汇总序列化）
@@ -467,6 +567,28 @@ function buildBrief(project, chapters, foreshadows, summaries) {
   const charBounds = parseCharacterBounds(project.path);
   if (Object.keys(charBounds).length > 0) {
     L1.character_bounds = charBounds;
+  }
+
+  // information_boundaries（角色信息边界，从主角设定集 bounds:xxx-known 锚标记提取）
+  const infoBounds = parseInfoBoundaries(project.path);
+  if (Object.keys(infoBounds).length > 0) {
+    L1.information_boundaries = infoBounds;
+  }
+
+  // A1: writing_skills — 写作规则库
+  if (characterName && novelId && _querySkills) {
+    try {
+      const skills = _querySkills(novelId, characterName, null);
+      if (skills.length > 0) {
+        L1.writing_skills = skills.map(s => ({
+          character: s.character_name,
+          scope: s.scope,
+          rule: s.rule,
+          confidence: s.confidence,
+          reason: `skill_memories 表匹配，来源：${s.source || "未记录"}`,
+        }));
+      }
+    } catch(e) {}
   }
 
   // ═══ L2：指针层 ═══
@@ -515,7 +637,7 @@ function buildBrief(project, chapters, foreshadows, summaries) {
 
 // ─── 工具入口 ───
 export const name = "query-novel-state";
-export const description = "查询指定小说的完整状态（章节进度、伏笔状态、剧情汇总、角色信息）。brief 模式返回 L0/L1/L2 三层上下文——L0 核心写前必读、L1 按章过滤的关联上下文、L2 深查指针。Agent 在写新章节前应调用 brief 模式了解上下文。";
+export const description = "查询指定小说的完整状态（章节进度、伏笔状态、剧情汇总、角色信息）。brief 模式返回 L0/L1/L2 三层上下文——L0 核心写前必读、L1 按章过滤的关联上下文（含写作规则、伏笔关系）、L2 深查指针。Agent 在写新章节前应调用 brief 模式了解上下文。";
 
 export const parameters = {
   type: "object",
@@ -529,6 +651,10 @@ export const parameters = {
       description: "输出模式：'full' 返回全部数据，'brief' 返回续写简报（精炼版，含 Strand Weave 节奏分析）",
       enum: ["full", "brief"],
       default: "full",
+    },
+    character: {
+      type: "string",
+      description: "（brief 模式可选）指定角色名，返回该角色的写作规则（writing_skills）",
     },
   },
   required: [],
@@ -562,9 +688,9 @@ export async function execute(input, ctx) {
     return { content: [{ type: "text", text: JSON.stringify({ error: `未找到小说 '${slug}'，可用: ${projects.map(p => p.slug).join(", ")}` }) }] };
   }
 
-  const chapters = parseChapterPlan(path.join(project.path, "章节规划.md"));
-  const foreshadows = parseForeshadowing(path.join(project.path, "伏笔与回收表.md"));
-  const summaries = parseSummary(path.join(project.path, "剧情汇总.md"));
+  const chapters = cachedParse(path.join(project.path, "章节规划.md"), parseChapterPlan);
+  const foreshadows = cachedParse(path.join(project.path, "伏笔与回收表.md"), parseForeshadowing);
+  const summaries = cachedParse(path.join(project.path, "剧情汇总.md"), parseSummary);
 
   // 合并后续章节上下文
   const mergedChapters = chapters.map((ch, idx) => {
@@ -587,7 +713,7 @@ export async function execute(input, ctx) {
 
   // 简报模式
   if (input.mode === "brief") {
-    const brief = buildBrief(project, chapters, foreshadows, summaries);
+    const brief = await buildBrief(project, chapters, foreshadows, summaries, input.character || null);
     return { content: [{ type: "text", text: JSON.stringify(brief, null, 2) }] };
   }
 

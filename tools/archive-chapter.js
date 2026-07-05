@@ -10,6 +10,15 @@
 import fs from "fs";
 import path from "path";
 
+// 尝试导入 store 函数
+let _clearCache = null, _insertAtomicFacts = null, _getNovelBySlug = null;
+try {
+  const store = await import("../lib/store.js");
+  _clearCache = store.clearCache;
+  _insertAtomicFacts = store.insertAtomicFacts;
+  _getNovelBySlug = store.getNovelBySlug;
+} catch(e) {}
+
 function slugify(s) { return s.replace(/[^\w\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "novel"; }
 
 // ─── 1. 写入剧情汇总 ───
@@ -154,6 +163,7 @@ export const parameters = {
         relation: { type: "string", description: "关系变化" },
         foreshadow: { type: "string", description: "伏笔变动，格式: F编号 状态；分号分隔。无变动留空" },
         setting: { type: "string", description: "设定新增或确认" },
+        atomic_facts: { type: "array", description: "（A4可选）可独立检索的细粒度事实列表，每项含 content 和 tags", items: { type: "object", properties: { content: { type: "string" }, tags: { type: "array", items: { type: "string" } } } } },
       },
       required: ["what", "emotion", "relation"],
     },
@@ -222,12 +232,39 @@ export async function execute(input, ctx) {
     }] };
   }
 
+  // A3: 清除缓存
+  if (_clearCache) {
+    try {
+      _clearCache(path.join(projectPath, "剧情汇总.md"));
+      _clearCache(path.join(projectPath, "章节规划.md"));
+      _clearCache(path.join(projectPath, "伏笔与回收表.md"));
+    } catch(e) {}
+  }
+
+  // A4: 保存 AtomicFact
+  let atomicResult = null;
+  if (entries.atomic_facts && entries.atomic_facts.length > 0 && _insertAtomicFacts && _getNovelBySlug) {
+    try {
+      let novel = _getNovelBySlug(slugify(path.basename(projectPath)));
+      if (!novel) {
+        const { upsertNovel } = await import("../lib/store.js");
+        const r = upsertNovel({ slug: slugify(path.basename(projectPath)), title: path.basename(projectPath).replace(/^《|》$/g, ""), path: projectPath });
+        novel = { id: r.lastInsertRowid };
+      }
+      _insertAtomicFacts(novel.id, chNum, entries.atomic_facts);
+      atomicResult = { saved: entries.atomic_facts.length };
+      // 显式持久化
+      try { const { getDb } = await import("../lib/store.js"); getDb()._save(); } catch(e) {}
+    } catch(e) { atomicResult = { error: e.message }; }
+  }
+
   return { content: [{
     type: "text",
     text: JSON.stringify({
       status: "ok",
       chapter: chNum,
       changes: results,
+      atomic_facts: atomicResult,
       backup: "已自动备份 .bak 文件",
     }, null, 2)
   }] };

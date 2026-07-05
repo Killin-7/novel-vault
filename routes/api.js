@@ -304,10 +304,19 @@ export default function (app, ctx) {
     const json = JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/-->/g, "--\\>");
     return html.replace("/*__DATA__*/", json);
   }
-
   const config = ctx.config || {};
   const basePaths = config.novelBasePath ? [config.novelBasePath] : [];
 
-  app.get("/novel-list", (c) => c.html(inject(SPA_HTML, buildData(basePaths))));
+  app.get("/novel-list", async (c) => {
+    const data = buildData(basePaths);
+    // 自动同步小说到 store
+    try {
+      const store = await import("../lib/store.js");
+      for (const novel of data.novels) {
+        try { store.upsertNovel({ slug: novel.slug, title: novel.title, path: novel.path }); } catch(e) {}
+      }
+    } catch(e) {}
+    return c.html(inject(SPA_HTML, data));
+  });
   app.post("/novel-list", async () => new Response(null, { status: 302, headers: { Location: "/api/plugins/novel-vault/novel-list" } }));
 }
